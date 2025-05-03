@@ -16,6 +16,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -23,6 +24,8 @@ import java.util.UUID;
 @Slf4j
 @RequiredArgsConstructor
 public class ManagerServiceImpl implements ManagerService {
+
+    private static final Duration PROGRESS_TIMEOUT = Duration.ofMinutes(3);
 
     private final TaskRepository taskRepository;
     private final TaskSenderService taskService;
@@ -48,20 +51,18 @@ public class ManagerServiceImpl implements ManagerService {
     public HashStatusResponse getHashStatus(HashStatusRequest request) {
         Task task = taskRepository.findByRequestId(request.requestId());
         if (task == null) {
-            return new HashStatusResponse("", null);
+            return new HashStatusResponse("", null, 0);
         }
 
+        String data = task.getData() == null ? "" : task.getData().trim();
         String status = task.getStatus();
-        String data = task.getData();
-        if (data != null) {
-            data = data.trim();
+        int progress = calculateProgress(status, task.getCreatedAt());
+
+        if (!Status.NOT_SENT.equals(status)) {
+            return new HashStatusResponse(status, data, progress);
         }
 
-        if (Status.READY.equals(status) || Status.PARTITION_READY.equals(status)) {
-            return new HashStatusResponse(status, data);
-        } else {
-            return new HashStatusResponse(status, null);
-        }
+        return new HashStatusResponse(status, "Wait for 20 seconds please and try again", 0);
     }
 
     @Override
@@ -91,5 +92,25 @@ public class ManagerServiceImpl implements ManagerService {
     public Integer getCountOfCompletedWorkers(String requestId) {
         Task task = taskRepository.findByRequestId(requestId);
         return task != null ? task.getCompletedParts() : 0;
+    }
+
+    private int calculateProgress(String status, LocalDateTime startTime) {
+        if (Status.READY.equals(status)
+                || Status.ERROR.equals(status)
+                || Status.PARTITION_READY.equals(status)) {
+            return 100;
+        }
+
+        if (Status.IN_PROGRESS.equals(status) && startTime != null) {
+            Duration elapsed = Duration.between(startTime, LocalDateTime.now());
+
+            if (elapsed.compareTo(PROGRESS_TIMEOUT) >= 0) {
+                return 100;
+            }
+            int pct = (int) ((double) elapsed.toMillis() / PROGRESS_TIMEOUT.toMillis() * 100);
+            return pct < 1 && elapsed.toMillis() > 0 ? 1 : pct;
+        }
+
+        return 0;
     }
 }

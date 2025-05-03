@@ -4,9 +4,7 @@ import com.example.common.model.Status;
 import com.example.managerservice.core.entity.Task;
 import com.example.managerservice.core.repository.TaskRepository;
 import com.example.managerservice.core.service.TaskSenderService;
-
 import lombok.RequiredArgsConstructor;
-
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -24,10 +22,7 @@ public class TaskRetryScheduler {
     public void retryNotSentTasks() {
         List<Task> tasks = taskRepository.findAllByStatus(Status.NOT_SENT);
         for (Task t : tasks) {
-            try {
-                taskService.sendTask(t);
-            } catch (Exception ignored) {
-            }
+            taskService.sendTask(t);
         }
     }
 
